@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Search, UserCheck, Flame, CheckCircle2, AlertTriangle, ArrowRight, Award, Shield, Cpu, BookOpen } from 'lucide-react';
-import { motion, useSpring } from 'framer-motion';
+import { motion, useSpring, useMotionValue, useTransform } from 'framer-motion';
 import { Candidate } from '@/lib/types';
 import candidatesData from '@/data/candidates.json';
 
@@ -42,9 +42,17 @@ interface TiltCardProps {
 
 const TiltCard: React.FC<TiltCardProps> = ({ children, onClick, variants }) => {
   const cardRef = React.useRef<HTMLDivElement>(null);
-  
-  const rotateX = useSpring(0, { stiffness: 150, damping: 22 });
-  const rotateY = useSpring(0, { stiffness: 150, damping: 22 });
+
+  // Raw mouse coordinates relative to card center
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+
+  // Spring physics for buttery motion
+  const springConfig = { stiffness: 300, damping: 20 };
+  const x = useSpring(useTransform(mouseX, [-0.5, 0.5], [-12, 12]), springConfig);
+  const y = useSpring(useTransform(mouseY, [-0.5, 0.5], [-12, 12]), springConfig);
+  const rotateX = useSpring(useTransform(mouseY, [-0.5, 0.5], [10, -10]), springConfig);
+  const rotateY = useSpring(useTransform(mouseX, [-0.5, 0.5], [-10, 10]), springConfig);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const card = cardRef.current;
@@ -54,21 +62,17 @@ const TiltCard: React.FC<TiltCardProps> = ({ children, onClick, variants }) => {
     const width = rect.width;
     const height = rect.height;
 
-    // Mouse coordinates relative to card center
-    const mouseX = e.clientX - rect.left - width / 2;
-    const mouseY = e.clientY - rect.top - height / 2;
+    // Calculate normalized cursor offsets from center (-0.5 to 0.5)
+    const normalizedX = (e.clientX - rect.left) / width - 0.5;
+    const normalizedY = (e.clientY - rect.top) / height - 0.5;
 
-    // Tilting degree calculation (maximum 14 degrees)
-    const rY = (mouseX / (width / 2)) * 14;
-    const rX = -(mouseY / (height / 2)) * 14;
-
-    rotateX.set(rX);
-    rotateY.set(rY);
+    mouseX.set(normalizedX);
+    mouseY.set(normalizedY);
   };
 
   const handleMouseLeave = () => {
-    rotateX.set(0);
-    rotateY.set(0);
+    mouseX.set(0);
+    mouseY.set(0);
   };
 
   return (
@@ -79,6 +83,8 @@ const TiltCard: React.FC<TiltCardProps> = ({ children, onClick, variants }) => {
       onMouseLeave={handleMouseLeave}
       variants={variants}
       style={{
+        x,
+        y,
         rotateX,
         rotateY,
         transformStyle: 'preserve-3d',
@@ -86,7 +92,6 @@ const TiltCard: React.FC<TiltCardProps> = ({ children, onClick, variants }) => {
       }}
       whileHover={{
         scale: 1.05,
-        y: -6,
         boxShadow: '0 25px 50px -12px rgba(0, 240, 255, 0.25)',
       }}
       whileTap={{ scale: 0.98 }}
