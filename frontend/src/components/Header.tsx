@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Cpu, Terminal, RefreshCw, Wifi, WifiOff, AlertTriangle, Sun, Moon } from 'lucide-react';
-import { useTheme } from 'next-themes';
+import { Cpu, Terminal, RefreshCw, Wifi, WifiOff, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BackendHealth, Candidate } from '@/lib/types';
 import { checkBackendHealth } from '@/lib/api';
@@ -16,7 +15,6 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ activeCandidate, onResetSession, sessionState }) => {
   const [backendStatus, setBackendStatus] = useState<BackendHealth | null>(null);
   const [isChecking, setIsChecking] = useState(false);
-  const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   const pingBackend = async () => {
@@ -130,31 +128,7 @@ export const Header: React.FC<HeaderProps> = ({ activeCandidate, onResetSession,
             </button>
           </div>
 
-          {/* Theme switcher */}
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="w-9 h-9 rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-800 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-all shadow-sm shrink-0"
-            title="Toggle theme"
-            aria-label="Toggle theme"
-          >
-            {mounted && (
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.div
-                  key={theme === 'dark' ? 'dark' : 'light'}
-                  initial={{ rotate: -90, opacity: 0 }}
-                  animate={{ rotate: 0, opacity: 1 }}
-                  exit={{ rotate: 90, opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                >
-                  {theme === 'dark' ? (
-                    <Sun className="w-4 h-4 text-amber-400" />
-                  ) : (
-                    <Moon className="w-4 h-4 text-blue-600" />
-                  )}
-                </motion.div>
-              </AnimatePresence>
-            )}
-          </button>
+
 
           {sessionState !== 'SELECT' && (
             <button
