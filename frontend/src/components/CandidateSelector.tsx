@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Search, UserCheck, Flame, CheckCircle2, AlertTriangle, ArrowRight, Award, Shield, Cpu, BookOpen } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, useSpring } from 'framer-motion';
 import { Candidate } from '@/lib/types';
 import candidatesData from '@/data/candidates.json';
 
@@ -32,6 +32,76 @@ const cardVariants = {
       damping: 20
     }
   }
+};
+
+interface TiltCardProps {
+  children: React.ReactNode;
+  onClick: () => void;
+  variants: any;
+}
+
+const TiltCard: React.FC<TiltCardProps> = ({ children, onClick, variants }) => {
+  const cardRef = React.useRef<HTMLDivElement>(null);
+  
+  const rotateX = useSpring(0, { stiffness: 150, damping: 22 });
+  const rotateY = useSpring(0, { stiffness: 150, damping: 22 });
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const card = cardRef.current;
+    if (!card) return;
+
+    const rect = card.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+
+    // Mouse coordinates relative to card center
+    const mouseX = e.clientX - rect.left - width / 2;
+    const mouseY = e.clientY - rect.top - height / 2;
+
+    // Tilting degree calculation (maximum 14 degrees)
+    const rY = (mouseX / (width / 2)) * 14;
+    const rX = -(mouseY / (height / 2)) * 14;
+
+    rotateX.set(rX);
+    rotateY.set(rY);
+  };
+
+  const handleMouseLeave = () => {
+    rotateX.set(0);
+    rotateY.set(0);
+  };
+
+  return (
+    <motion.div
+      ref={cardRef}
+      onClick={onClick}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      variants={variants}
+      style={{
+        rotateX,
+        rotateY,
+        transformStyle: 'preserve-3d',
+        perspective: 1000,
+      }}
+      whileHover={{
+        scale: 1.05,
+        y: -6,
+        boxShadow: '0 25px 50px -12px rgba(0, 240, 255, 0.25)',
+      }}
+      whileTap={{ scale: 0.98 }}
+      className="group cursor-pointer relative bg-white/60 dark:bg-slate-900/40 border border-slate-200/80 dark:border-slate-800/80 backdrop-blur-md rounded-2xl p-6 transition-all duration-300 hover:border-blue-500/50 dark:hover:border-cyan-500/50 flex flex-col justify-between overflow-hidden"
+    >
+      {/* Glow overlays */}
+      <div className="absolute inset-0 -z-10 bg-gradient-to-br from-blue-500/0 via-blue-500/0 to-blue-500/5 dark:to-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+      <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-500/25 dark:via-cyan-500/35 to-transparent transform -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out pointer-events-none" />
+      
+      {/* 3D Parallax offset wrapper */}
+      <div style={{ transform: 'translateZ(24px)', transformStyle: 'preserve-3d' }} className="h-full flex flex-col justify-between">
+        {children}
+      </div>
+    </motion.div>
+  );
 };
 
 export const CandidateSelector: React.FC<CandidateSelectorProps> = ({ onSelectCandidate }) => {
@@ -122,22 +192,11 @@ export const CandidateSelector: React.FC<CandidateSelectorProps> = ({ onSelectCa
           const tag = getCandidateTag(candidate);
 
           return (
-            <motion.div
+            <TiltCard
               key={candidate.member.id}
               onClick={() => onSelectCandidate(candidate)}
               variants={cardVariants}
-              whileHover={{
-                scale: 1.04,
-                y: -6,
-                boxShadow: '0 20px 40px rgba(0, 0, 0, 0.15)',
-              }}
-              whileTap={{ scale: 0.98 }}
-              className="group cursor-pointer relative bg-white/60 dark:bg-slate-900/40 border border-slate-200/80 dark:border-slate-800/80 backdrop-blur-md rounded-2xl p-6 transition-all duration-300 hover:border-blue-500/50 dark:hover:border-cyan-500/50 flex flex-col justify-between overflow-hidden"
             >
-              {/* Radial light glow effect on hover */}
-              <div className="absolute inset-0 -z-10 bg-gradient-to-br from-blue-500/0 via-blue-500/0 to-blue-500/5 dark:to-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-              {/* Light sweep highlight line */}
-              <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-500/25 dark:via-cyan-500/35 to-transparent transform -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-out pointer-events-none" />
               <div className="space-y-4">
                 {/* Header info */}
                 <div className="flex items-start justify-between">
@@ -196,7 +255,7 @@ export const CandidateSelector: React.FC<CandidateSelectorProps> = ({ onSelectCa
                   <ArrowRight className="w-3.5 h-3.5" />
                 </div>
               </div>
-            </motion.div>
+            </TiltCard>
           );
         })}
       </motion.div>
