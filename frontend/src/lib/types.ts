@@ -34,6 +34,17 @@ export interface InterviewFeedback {
   next: string[];
 }
 
+/** Live coverage stats reported by the backend after every turn. */
+export interface InterviewProgress {
+  questionsAsked: number;
+  minQuestions: number;
+  coveredDays: number[];
+  plannedDays: number[];
+  daysCovered: number;
+  minDays: number;
+  done: boolean;
+}
+
 export interface InterviewStartRequest {
   sessionId: string;
   candidate: Candidate;
@@ -48,6 +59,41 @@ export interface InterviewResponse {
   reply: string;
   done: boolean;
   feedback?: InterviewFeedback;
+  progress?: InterviewProgress;
+}
+
+/** Stable codes the backend returns so the UI can react per failure type. */
+export type ApiErrorCode =
+  | 'network_unreachable'
+  | 'session_not_found'
+  | 'invalid_request'
+  | 'llm_not_configured'
+  | 'llm_auth_failed'
+  | 'llm_rate_limited'
+  | 'llm_unavailable'
+  | 'llm_bad_response'
+  | 'retrieval_unavailable'
+  | 'interview_error';
+
+export interface ApiErrorShape {
+  code: ApiErrorCode;
+  message: string;
+  hint?: string;
+  status?: number;
+  retryable: boolean;
+}
+
+export interface BackendHealth {
+  healthy: boolean;
+  status?: 'ok' | 'degraded';
+  ragChunks?: number;
+  ragReady?: boolean;
+  llmReady?: boolean;
+  model?: string;
+  activeSessions?: number;
+  minQuestions?: number;
+  minDays?: number;
+  error?: string;
 }
 
 export interface MessageItem {
@@ -57,6 +103,8 @@ export interface MessageItem {
   timestamp: string;
   topic?: string;
   difficulty?: 'EASY' | 'MEDIUM' | 'HARD' | 'EXTREME';
+  /** Round-trip time in ms for agent replies. */
+  latencyMs?: number;
 }
 
 export interface CurriculumModule {

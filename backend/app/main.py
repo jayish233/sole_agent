@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from app.agent.errors import InterviewError, InvalidRequestError
 from app.agent.interviewer import interview_agent
 from app.agent.session import session_store
 from app.config import settings
 from app.rag.store import get_vector_store
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="AI Interview Agent",
@@ -41,58 +48,106 @@ class FeedbackModel(BaseModel):
     next: list[str]
 
 
+class ProgressModel(BaseModel):
+    questionsAsked: int
+    minQuestions: int
+    coveredDays: list[int]
+    plannedDays: list[int]
+    daysCovered: int
+    minDays: int
+    done: bool
+
+
 class InterviewResponse(BaseModel):
     reply: str
     done: bool
     feedback: FeedbackModel | None = None
+    progress: ProgressModel | None = None
+
+
+@app.exception_handler(InterviewError)
+async def interview_error_handler(_: Request, exc: InterviewError) -> JSONResponse:
+    """Return the machine-readable code and hint the UI shows to the user."""
+    logger.warning("%s: %s", exc.code, exc.message)
+    return JSONResponse(status_code=exc.status, content={"error": exc.to_payload()})
 
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    store_count = 0
+    """Reports whether both dependencies of an interview are usable."""
+    rag_chunks = -1
+    rag_error: str | None = None
     try:
-        store_count = get_vector_store().count()
-    except Exception:
-        store_count = -1
+        rag_chunks = get_vector_store().count()
+    except Exception as exc:
+        rag_error = str(exc)
+
+    rag_ready = rag_chunks > 0
+    llm_ready = bool(settings.gemini_api_key)
+
     return {
-        "status": "ok",
-        "rag_chunks": store_count,
+        "status": "ok" if (rag_ready and llm_ready) else "degraded",
+        "rag_chunks": rag_chunks,
+        "rag_ready": rag_ready,
+        "rag_error": rag_error,
+        "llm_ready": llm_ready,
         "model": settings.gemini_model,
+        "active_sessions": session_store.count(),
+        "min_questions": settings.min_questions,
+        "min_days": settings.min_curriculum_days,
     }
+
+
+@app.get("/api/candidates")
+def list_candidates() -> dict[str, Any]:
+    """Candidate profiles, so clients don't need their own copy of the data."""
+    if not settings.candidates_path.exists():
+        raise InterviewError(
+            "Candidate profiles are not available on the server.",
+            hint=f"Expected candidates.json at {settings.candidates_path}",
+        )
+
+    try:
+        data = json.loads(settings.candidates_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise InterviewError(f"candidates.json is not valid JSON: {exc}") from exc
+
+    return {"candidates": data.get("candidates", [])}
 
 
 @app.post("/api/interview", response_model=InterviewResponse)
 def interview(body: InterviewRequest) -> dict[str, Any]:
     session_id = body.sessionId.strip()
+    if not session_id:
+        raise InvalidRequestError("sessionId must not be blank.")
 
-    # Start: candidate present, no message required
+    # A candidate with no message starts a fresh interview.
     if body.candidate is not None and not body.message:
-        try:
-            return interview_agent.start(session_id, body.candidate)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"Failed to start interview: {exc}") from exc
+        return interview_agent.start(session_id, body.candidate)
 
-    # Turn: message present
     if body.message is not None:
-        existing = session_store.get(session_id)
-        if existing is None and body.candidate is not None:
-            # Allow start+first-message style by initializing first
-            interview_agent.start(session_id, body.candidate)
-        try:
-            return interview_agent.turn(session_id, body.message)
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except RuntimeError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"Interview turn failed: {exc}") from exc
+        message = body.message.strip()
+        if not message:
+            raise InvalidRequestError(
+                "message must not be empty.",
+                hint="Send the candidate's answer text as `message`.",
+            )
 
-    raise HTTPException(
-        status_code=400,
-        detail="Provide `candidate` to start, or `message` for a conversation turn.",
+        # Tolerate a client that sends candidate + message on the first call.
+        if session_store.get(session_id) is None and body.candidate is not None:
+            interview_agent.start(session_id, body.candidate)
+
+        return interview_agent.turn(session_id, message)
+
+    raise InvalidRequestError(
+        "Provide `candidate` to start an interview, or `message` to continue one.",
     )
+
+
+@app.delete("/api/interview/{session_id}")
+def end_session(session_id: str) -> dict[str, Any]:
+    """Let clients release a session without waiting for the interview to finish."""
+    return {"deleted": session_store.delete(session_id)}
 
 
 @app.post("/api/rag/ingest")
@@ -104,4 +159,8 @@ def reingest() -> dict[str, Any]:
         get_vector_store.cache_clear()  # type: ignore[attr-defined]
     except Exception:
         pass
-    return ingest(reset=True)
+
+    try:
+        return ingest(reset=True)
+    except FileNotFoundError as exc:
+        raise InterviewError(f"Cannot ingest: {exc}") from exc

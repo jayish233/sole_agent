@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from threading import Lock
 from typing import Any
 
+from app.config import settings
+
 
 @dataclass
 class InterviewSession:
@@ -17,6 +19,25 @@ class InterviewSession:
     covered_days: list[int] = field(default_factory=list)
     done: bool = False
     feedback: dict[str, Any] | None = None
+
+    def progress(self) -> dict[str, Any]:
+        """Live coverage stats the UI renders instead of guessing."""
+        covered = sorted(set(self.covered_days))
+        return {
+            "questionsAsked": self.questions_asked,
+            "minQuestions": settings.min_questions,
+            "coveredDays": covered,
+            "plannedDays": self.planned_days,
+            "daysCovered": len(covered),
+            "minDays": settings.min_curriculum_days,
+            "done": self.done,
+        }
+
+    def meets_completion_bar(self) -> bool:
+        return (
+            self.questions_asked >= settings.min_questions
+            and len(set(self.covered_days)) >= settings.min_curriculum_days
+        )
 
 
 class SessionStore:
@@ -37,6 +58,14 @@ class SessionStore:
     def upsert(self, session: InterviewSession) -> None:
         with self._lock:
             self._sessions[session.session_id] = session
+
+    def delete(self, session_id: str) -> bool:
+        with self._lock:
+            return self._sessions.pop(session_id, None) is not None
+
+    def count(self) -> int:
+        with self._lock:
+            return len(self._sessions)
 
 
 session_store = SessionStore()

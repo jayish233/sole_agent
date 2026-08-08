@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { ShieldCheck, Cpu, Terminal, RefreshCw, Zap, Wifi, WifiOff } from 'lucide-react';
-import { Candidate } from '@/lib/types';
+import { Cpu, Terminal, RefreshCw, Wifi, WifiOff, AlertTriangle } from 'lucide-react';
+import { BackendHealth, Candidate } from '@/lib/types';
 import { checkBackendHealth } from '@/lib/api';
 
 interface HeaderProps {
@@ -12,9 +12,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ activeCandidate, onResetSession, sessionState }) => {
-  const [backendStatus, setBackendStatus] = useState<{ healthy: boolean; ragChunks?: number; model?: string }>({
-    healthy: false,
-  });
+  const [backendStatus, setBackendStatus] = useState<BackendHealth>({ healthy: false });
   const [isChecking, setIsChecking] = useState(false);
 
   const pingBackend = async () => {
@@ -71,21 +69,35 @@ export const Header: React.FC<HeaderProps> = ({ activeCandidate, onResetSession,
 
         {/* Right: Backend Health Status & Reset Action */}
         <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-2 bg-slate-900/60 border border-slate-800/80 px-3 py-1.5 rounded-lg text-xs font-mono">
-            {backendStatus.healthy ? (
+          <div
+            className="flex items-center space-x-2 bg-slate-900/60 border border-slate-800/80 px-3 py-1.5 rounded-lg text-xs font-mono"
+            title={
+              backendStatus.healthy
+                ? `Model: ${backendStatus.model} · ${backendStatus.activeSessions ?? 0} active session(s)`
+                : backendStatus.error
+            }
+          >
+            {!backendStatus.healthy ? (
+              <>
+                <WifiOff className="w-3.5 h-3.5 text-rose-400" />
+                <span className="text-rose-400 font-medium">BACKEND OFFLINE</span>
+              </>
+            ) : backendStatus.status === 'degraded' ? (
+              <>
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-amber-400 font-medium">
+                  {!backendStatus.llmReady ? 'NO GEMINI KEY' : 'INDEX MISSING'}
+                </span>
+              </>
+            ) : (
               <>
                 <Wifi className="w-3.5 h-3.5 text-emerald-400" />
                 <span className="text-emerald-400 font-medium">BACKEND LIVE</span>
-                {backendStatus.ragChunks !== undefined && backendStatus.ragChunks > 0 && (
+                {!!backendStatus.ragChunks && backendStatus.ragChunks > 0 && (
                   <span className="hidden lg:inline text-slate-400 border-l border-slate-700 pl-2">
                     {backendStatus.ragChunks} RAG Chunks
                   </span>
                 )}
-              </>
-            ) : (
-              <>
-                <WifiOff className="w-3.5 h-3.5 text-amber-400" />
-                <span className="text-amber-400 font-medium">STANDALONE DEMO</span>
               </>
             )}
             <button
