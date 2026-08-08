@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# RAG / vector store
+backend/.chroma/
+*.chroma/
+
+# Node / frontend
+node_modules/
+dist/
+.next/
+.vite/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
