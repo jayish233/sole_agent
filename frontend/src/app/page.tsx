@@ -1,269 +1,563 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
-import { Header } from '@/components/Header';
-import { CandidateSelector } from '@/components/CandidateSelector';
-import { CandidateDNA } from '@/components/CandidateDNA';
-import { HUD } from '@/components/HUD';
-import { ChatConsole } from '@/components/ChatConsole';
-import { AssessmentReport } from '@/components/AssessmentReport';
-import { ErrorBanner } from '@/components/ErrorBanner';
-import {
-  ApiErrorShape,
-  Candidate,
-  InterviewProgress,
-  MessageItem,
-  InterviewFeedback,
-} from '@/lib/types';
-import { ApiError, endSessionAPI, startInterviewAPI, sendTurnAPI } from '@/lib/api';
+import React, { useEffect, useRef } from 'react';
 
-type ApplicationState = 'SELECT_CANDIDATE' | 'CANDIDATE_DNA' | 'INTERVIEWING' | 'REPORT';
+export default function HomeLandingPage() {
+  const logoRef = useRef<HTMLHeadingElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const glassCardRef = useRef<HTMLDivElement>(null);
+  const cursorRingRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLAnchorElement>(null);
 
-const EMPTY_PROGRESS: InterviewProgress = {
-  questionsAsked: 0,
-  minQuestions: 8,
-  coveredDays: [],
-  plannedDays: [],
-  daysCovered: 0,
-  minDays: 4,
-  done: false,
-};
+  useEffect(() => {
+    document.body.classList.add('landing-page-active');
 
-function toApiErrorShape(err: unknown): ApiErrorShape {
-  if (err instanceof ApiError) {
-    return {
-      code: err.code,
-      message: err.message,
-      hint: err.hint,
-      status: err.status,
-      retryable: err.retryable,
-    };
-  }
-  return {
-    code: 'interview_error',
-    message: err instanceof Error ? err.message : 'Unexpected error.',
-    retryable: true,
-  };
-}
+    // 1. Logo Letter Splitting
+    const logoText = logoRef.current;
+    if (logoText) {
+      const text = logoText.textContent?.trim() || '';
+      logoText.innerHTML = '';
+      [...text].forEach((char, index) => {
+        const wrapper = document.createElement('span');
+        wrapper.className = 'letter-wrapper';
+        const inner = document.createElement('span');
+        inner.textContent = char === ' ' ? '\u00A0' : char;
+        inner.className = 'letter-inner';
+        inner.style.animationDelay = `${index * 0.09}s`;
+        wrapper.appendChild(inner);
+        logoText.appendChild(wrapper);
+      });
+    }
 
-function timestamp(): string {
-  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
+    // 2. Title Word Splitting
+    const heroTitle = titleRef.current;
+    if (heroTitle) {
+      const text = heroTitle.innerHTML;
+      const parts = text.split(/(\s+|<br\s*\/?>)/i);
+      heroTitle.innerHTML = '';
 
-export default function Home() {
-  const [appState, setAppState] = useState<ApplicationState>('SELECT_CANDIDATE');
-  const [selectedCandidate, setSelectedCandidate] = useState<Candidate | null>(null);
-  const [sessionId, setSessionId] = useState<string>('');
-  const [messages, setMessages] = useState<MessageItem[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [feedback, setFeedback] = useState<InterviewFeedback | null>(null);
+      let wordIndex = 0;
+      parts.forEach((part) => {
+        if (part.trim() === '') {
+          heroTitle.appendChild(document.createTextNode(' '));
+        } else if (part.toLowerCase().startsWith('<br')) {
+          heroTitle.appendChild(document.createElement('br'));
+        } else {
+          const wrapper = document.createElement('span');
+          wrapper.className = 'word-wrapper';
+          const inner = document.createElement('span');
+          inner.className = 'word-inner';
+          inner.textContent = part;
+          inner.style.animationDelay = `${wordIndex * 0.1}s`;
+          wordIndex++;
+          wrapper.appendChild(inner);
+          heroTitle.appendChild(wrapper);
+        }
+      });
+    }
 
-  // Coverage reported by the backend, never guessed client-side.
-  const [progress, setProgress] = useState<InterviewProgress>(EMPTY_PROGRESS);
+    // 3. Cursor & Plaquette Physics LERP
+    const glassCard = glassCardRef.current;
+    const cursorRing = cursorRingRef.current;
+    const heroBtn = btnRef.current;
 
-  const [error, setError] = useState<ApiErrorShape | null>(null);
-  // Answer held back by a failed turn, so Retry can resend it.
-  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+    if (glassCard && cursorRing) {
+      let mouseX = window.innerWidth / 2;
+      let mouseY = window.innerHeight / 2;
+      let cardX = mouseX;
+      let cardY = mouseY;
+      let ringX = mouseX;
+      let ringY = mouseY;
 
-  const appendMessage = useCallback((msg: MessageItem) => {
-    setMessages((prev) => [...prev, msg]);
+      let isFirstMove = true;
+      let scale = 0;
+      let targetScale = 0;
+      let isHoveringBtn = false;
+
+      const onMouseMove = (e: MouseEvent) => {
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+
+        if (isFirstMove) {
+          cardX = mouseX;
+          cardY = mouseY;
+          ringX = mouseX;
+          ringY = mouseY;
+          isFirstMove = false;
+          glassCard.classList.add('active');
+          cursorRing.classList.add('active');
+        }
+
+        if (!isHoveringBtn) {
+          targetScale = 1;
+        }
+      };
+
+      const onMouseLeave = () => {
+        targetScale = 0;
+      };
+
+      const onMouseEnter = () => {
+        if (!isHoveringBtn) {
+          targetScale = 1;
+        }
+      };
+
+      const onBtnEnter = () => {
+        isHoveringBtn = true;
+        targetScale = 0;
+        cursorRing.classList.add('expanded');
+      };
+
+      const onBtnLeave = () => {
+        isHoveringBtn = false;
+        targetScale = 1;
+        cursorRing.classList.remove('expanded');
+      };
+
+      window.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseleave', onMouseLeave);
+      document.addEventListener('mouseenter', onMouseEnter);
+
+      if (heroBtn) {
+        heroBtn.addEventListener('mouseenter', onBtnEnter);
+        heroBtn.addEventListener('mouseleave', onBtnLeave);
+      }
+
+      let animId: number;
+      const updatePhysics = () => {
+        cardX += (mouseX - cardX) * 0.08;
+        cardY += (mouseY - cardY) * 0.08;
+        ringX = mouseX;
+        ringY = mouseY;
+
+        scale += (targetScale - scale) * 0.15;
+        const currentRingScale = cursorRing.classList.contains('expanded') ? 1.6 * scale : scale;
+
+        glassCard.style.transform = `translate3d(${cardX}px, ${cardY + 28}px, 0) translate(-50%, 0) scale(${scale})`;
+        cursorRing.style.transform = `translate3d(${ringX}px, ${ringY}px, 0) translate(-50%, -50%) scale(${currentRingScale})`;
+
+        animId = requestAnimationFrame(updatePhysics);
+      };
+
+      updatePhysics();
+
+      return () => {
+        document.body.classList.remove('landing-page-active');
+        window.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseleave', onMouseLeave);
+        document.removeEventListener('mouseenter', onMouseEnter);
+        if (heroBtn) {
+          heroBtn.removeEventListener('mouseenter', onBtnEnter);
+          heroBtn.removeEventListener('mouseleave', onBtnLeave);
+        }
+        cancelAnimationFrame(animId);
+      };
+    }
   }, []);
 
-  const handleSelectCandidate = (candidate: Candidate) => {
-    setSelectedCandidate(candidate);
-    setAppState('CANDIDATE_DNA');
-    setError(null);
-  };
-
-  const startInterview = useCallback(
-    async (candidate: Candidate) => {
-      setIsLoading(true);
-      setError(null);
-      setPendingMessage(null);
-      setMessages([]);
-      setFeedback(null);
-      setProgress(EMPTY_PROGRESS);
-
-      const newSessionId = `session-${Date.now()}`;
-      setSessionId(newSessionId);
-      setAppState('INTERVIEWING');
-
-      const startedAt = performance.now();
-      try {
-        const response = await startInterviewAPI(newSessionId, candidate);
-        appendMessage({
-          id: `msg-${Date.now()}`,
-          sender: 'SOLE_AGENT',
-          text: response.reply,
-          timestamp: timestamp(),
-          latencyMs: Math.round(performance.now() - startedAt),
-        });
-        if (response.progress) setProgress(response.progress);
-      } catch (err) {
-        setError(toApiErrorShape(err));
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [appendMessage]
-  );
-
-  const handleStartInterview = () => {
-    if (selectedCandidate) void startInterview(selectedCandidate);
-  };
-
-  const submitAnswer = useCallback(
-    async (text: string) => {
-      if (!selectedCandidate || !sessionId) return;
-
-      setIsLoading(true);
-      setError(null);
-
-      const startedAt = performance.now();
-      try {
-        const response = await sendTurnAPI(sessionId, text);
-
-        appendMessage({
-          id: `msg-agent-${Date.now()}`,
-          sender: 'SOLE_AGENT',
-          text: response.reply,
-          timestamp: timestamp(),
-          latencyMs: Math.round(performance.now() - startedAt),
-        });
-
-        if (response.progress) setProgress(response.progress);
-        setPendingMessage(null);
-
-        if (response.done && response.feedback) {
-          setFeedback(response.feedback);
-          void endSessionAPI(sessionId);
-          setTimeout(() => setAppState('REPORT'), 1500);
-        }
-      } catch (err) {
-        // Keep the answer so Retry can resend it rather than losing the text.
-        setPendingMessage(text);
-        setError(toApiErrorShape(err));
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [appendMessage, selectedCandidate, sessionId]
-  );
-
-  const handleSendMessage = (text: string) => {
-    if (isLoading) return;
-
-    appendMessage({
-      id: `msg-user-${Date.now()}`,
-      sender: 'CANDIDATE',
-      text,
-      timestamp: timestamp(),
-    });
-
-    void submitAnswer(text);
-  };
-
-  const handleRetry = () => {
-    if (!error) return;
-
-    // A dead session cannot be resumed, so rebuild it from the same candidate.
-    if (error.code === 'session_not_found' && selectedCandidate) {
-      void startInterview(selectedCandidate);
-      return;
-    }
-
-    if (pendingMessage) {
-      void submitAnswer(pendingMessage);
-      return;
-    }
-
-    if (selectedCandidate) void startInterview(selectedCandidate);
-  };
-
-  const handleReset = () => {
-    if (sessionId) void endSessionAPI(sessionId);
-    setAppState('SELECT_CANDIDATE');
-    setSelectedCandidate(null);
-    setMessages([]);
-    setFeedback(null);
-    setError(null);
-    setPendingMessage(null);
-    setProgress(EMPTY_PROGRESS);
-    setSessionId('');
-  };
-
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col cyber-grid relative">
-      <div className="fixed top-0 left-1/4 w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-[128px] pointer-events-none" />
-      <div className="fixed bottom-0 right-1/4 w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-[128px] pointer-events-none" />
+    <div className="landing-page-body">
+      <style dangerouslySetInnerHTML={{ __html: `
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
+        @import url('https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap');
 
-      <Header
-        activeCandidate={selectedCandidate}
-        onResetSession={handleReset}
-        sessionState={
-          appState === 'SELECT_CANDIDATE' || appState === 'CANDIDATE_DNA'
-            ? 'SELECT'
-            : appState === 'INTERVIEWING'
-            ? 'INTERVIEW'
-            : 'REPORT'
+        .landing-page-body {
+          background-color: #000000 !important;
+          color: #ffffff !important;
+          min-height: 100vh;
+          width: 100vw;
+          overflow: hidden;
+          position: fixed;
+          inset: 0;
+          z-index: 9999;
+          font-family: 'Outfit', sans-serif;
         }
+
+        #top-gradient-img {
+          position: fixed;
+          top: -30vh;
+          left: 0;
+          width: 100vw;
+          height: auto;
+          display: block;
+          z-index: 10;
+          pointer-events: none;
+        }
+
+        .landing-hero-content {
+          position: relative;
+          z-index: 12;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+          padding-top: 6vh;
+          width: 95%;
+          max-width: 1100px;
+          margin: 0 auto;
+        }
+
+        .landing-hero-title {
+          font-family: 'Playfair Display', Georgia, serif;
+          font-size: 2.8rem;
+          font-weight: 400;
+          color: #ffffff;
+          line-height: 1.15;
+          margin-bottom: 2.2rem;
+          letter-spacing: -0.015em;
+          text-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .landing-hero-btn {
+          font-family: 'Outfit', sans-serif;
+          font-size: 1.1rem;
+          font-weight: 500;
+          letter-spacing: 0.02em;
+          color: #ffffff;
+          background-color: #000000;
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          padding: 1.3rem 2.5rem;
+          border-radius: 9999px;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.9rem;
+          cursor: pointer;
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          box-shadow: 0 4px 25px rgba(0, 0, 0, 0.4);
+          outline: none;
+        }
+        .landing-hero-btn:hover {
+          background-color: #ffffff;
+          color: #000000;
+          border-color: #ffffff;
+          transform: translateY(-2px);
+          box-shadow: 0 6px 30px rgba(0, 0, 0, 0.3);
+        }
+        .landing-hero-btn:active {
+          transform: translateY(0);
+        }
+
+        .landing-blinking-dot {
+          width: 10px;
+          height: 10px;
+          background-color: #39FF14;
+          border-radius: 50%;
+          position: relative;
+          display: inline-block;
+          animation: pulse-glow 2s infinite ease-in-out;
+        }
+        .landing-blinking-dot::after {
+          content: '';
+          position: absolute;
+          top: -5px; left: -5px; right: -5px; bottom: -5px;
+          background-color: rgba(57, 255, 20, 0.45);
+          border-radius: 50%;
+          animation: wave-expand 2s infinite ease-in-out;
+        }
+        @keyframes pulse-glow {
+          0%, 100% {
+            opacity: 0.5;
+            transform: scale(0.85);
+            box-shadow: 0 0 4px rgba(57, 255, 20, 0.3);
+          }
+          50% {
+            opacity: 1;
+            transform: scale(1.1);
+            box-shadow: 0 0 12px rgba(57, 255, 20, 0.9);
+          }
+        }
+        @keyframes wave-expand {
+          0%   { transform: scale(0.6); opacity: 0.9; }
+          100% { transform: scale(2.3); opacity: 0; }
+        }
+
+        .landing-footer-container {
+          position: fixed;
+          top: 50vh;
+          left: 20px;
+          right: 20px;
+          width: calc(100vw - 40px);
+          transform: translateY(-50%);
+          z-index: 13;
+          display: flex;
+          flex-direction: column;
+          pointer-events: none;
+        }
+        .landing-footer-top {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          width: 100%;
+          padding: 0 5px;
+        }
+        .landing-footer-title {
+          font-family: 'General Sans', -apple-system, sans-serif;
+          font-size: 1.4rem;
+          font-weight: 400;
+          color: #ffffff;
+          letter-spacing: -0.015em;
+          margin: 0;
+        }
+        .landing-footer-divider {
+          border: none;
+          height: 1px;
+          background-color: rgba(255, 255, 255, 0.2);
+          margin: 1.6rem 0;
+          width: 100%;
+        }
+        .landing-footer-bottom {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          width: 100%;
+          padding: 0 5px;
+          pointer-events: auto;
+        }
+        .landing-footer-socials {
+          display: flex;
+          gap: 1.25rem;
+          align-items: center;
+          flex: 1;
+        }
+        .landing-footer-links {
+          display: flex;
+          gap: 2.8rem;
+          justify-content: center;
+          align-items: center;
+          flex: 2;
+        }
+        .landing-footer-link {
+          font-family: 'Outfit', sans-serif;
+          font-size: 0.95rem;
+          font-weight: 400;
+          color: #ffffff;
+          text-decoration: none;
+          letter-spacing: 0.03em;
+          transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .landing-footer-link:hover {
+          opacity: 0.75;
+          transform: translateY(-1px);
+        }
+        .landing-footer-copyright {
+          font-family: 'Outfit', sans-serif;
+          font-size: 0.95rem;
+          font-weight: 400;
+          color: rgba(255, 255, 255, 0.45);
+          text-align: right;
+          flex: 1;
+          letter-spacing: 0.02em;
+        }
+
+        .landing-footer-logo-wrap {
+          position: fixed;
+          bottom: 20px;
+          left: 0;
+          right: 0;
+          width: 100%;
+          padding: 0 20px;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          z-index: 13;
+          margin: 0;
+        }
+        .landing-footer-logo-text {
+          font-family: 'General Sans', -apple-system, sans-serif;
+          font-size: 21.9vw;
+          font-weight: 400;
+          color: #ffffff;
+          letter-spacing: -0.03em;
+          margin-right: -0.03em;
+          transform: translateX(-20px);
+          line-height: 0.8;
+          margin-top: 0;
+          margin-bottom: 0;
+          margin-left: 0;
+          text-align: center;
+          width: 100%;
+          pointer-events: none;
+          opacity: 0.95;
+          text-shadow: none;
+          white-space: nowrap;
+        }
+
+        .landing-video-container {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          width: 100vw;
+          height: 90vh;
+          overflow: hidden;
+          z-index: 9;
+        }
+        #landing-bg-video {
+          width: 100%;
+          height: 110%;
+          object-fit: cover;
+          display: block;
+        }
+
+        .landing-glass-cursor-card {
+          position: fixed;
+          top: 0;
+          left: 0;
+          z-index: 99999;
+          pointer-events: none;
+          padding: 0.75rem 1.5rem;
+          background: rgba(255, 255, 255, 0.08);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          border-radius: 9999px;
+          box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
+          transform: translate(-50%, -50%) scale(0);
+          opacity: 0;
+          will-change: transform, opacity;
+          transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                      background 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                      border-color 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+                      box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .landing-glass-cursor-card.active { opacity: 1; }
+        .landing-cursor-card-text {
+          font-family: 'General Sans', -apple-system, sans-serif;
+          font-size: 0.85rem;
+          font-weight: 500;
+          letter-spacing: 0.06em;
+          color: #39FF14;
+          text-transform: uppercase;
+          white-space: nowrap;
+          text-shadow: 0 0 8px rgba(57, 255, 20, 0.45);
+        }
+        .landing-cursor-card-text .text-white {
+          color: #ffffff;
+          text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+        }
+        .landing-cursor-ring-outline {
+          display: none !important;
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 48px;
+          height: 48px;
+          border: 1.5px solid rgba(255, 255, 255, 0.45);
+          border-radius: 50%;
+          z-index: 99998;
+          pointer-events: none;
+          transform: translate(-50%, -50%) scale(0);
+          opacity: 0;
+          will-change: transform, opacity;
+          transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+                      border-color 0.4s ease;
+        }
+        .landing-cursor-ring-outline.active { opacity: 1; }
+        .landing-cursor-ring-outline.expanded {
+          border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .landing-hero-title .word-wrapper {
+          display: inline-block;
+          overflow: hidden;
+          vertical-align: bottom;
+          padding-bottom: 0.15em;
+          margin-bottom: -0.15em;
+        }
+        .landing-hero-title .word-inner {
+          display: inline-block;
+          opacity: 0;
+          transform: translateY(105%);
+          filter: blur(20px);
+          animation: word-reveal-mask 1.3s cubic-bezier(0.05, 0.9, 0.1, 1) forwards;
+        }
+        @keyframes word-reveal-mask {
+          0%   { opacity: 0; transform: translateY(105%); filter: blur(20px); }
+          30%  { opacity: 1; }
+          100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+        }
+
+        .landing-footer-logo-text .letter-wrapper {
+          display: inline-block;
+          overflow: hidden;
+          vertical-align: bottom;
+          line-height: 0.8;
+        }
+        .landing-footer-logo-text .letter-inner {
+          display: inline-block;
+          opacity: 0;
+          transform: translateX(-105%);
+          filter: blur(20px);
+          animation: letter-reveal-mask 1.2s cubic-bezier(0.05, 0.9, 0.1, 1) forwards;
+        }
+        @keyframes letter-reveal-mask {
+          0%   { opacity: 0; transform: translateX(-105%); filter: blur(20px); }
+          25%  { opacity: 1; }
+          100% { opacity: 0.95; transform: translateX(0); filter: blur(0); }
+        }
+      ` }} />
+
+      <img
+        src="https://api.getlayers.ai/storage/v1/object/public/public/assets/loopstack-f8c64439bf/black_gradient.svg"
+        alt="Top Gradient"
+        id="top-gradient-img"
       />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col justify-center gap-4">
-        {/* Errors outside the interview surface at the top of the page. */}
-        {error && appState !== 'INTERVIEWING' && (
-          <ErrorBanner
-            error={error}
-            onRetry={handleRetry}
-            onDismiss={() => setError(null)}
-            isRetrying={isLoading}
-          />
-        )}
-
-        {appState === 'SELECT_CANDIDATE' && (
-          <CandidateSelector onSelectCandidate={handleSelectCandidate} />
-        )}
-
-        {appState === 'CANDIDATE_DNA' && selectedCandidate && (
-          <CandidateDNA
-            candidate={selectedCandidate}
-            onBack={() => setAppState('SELECT_CANDIDATE')}
-            onStartInterview={handleStartInterview}
-            isStarting={isLoading}
-          />
-        )}
-
-        {appState === 'INTERVIEWING' && selectedCandidate && (
-          <div className="flex flex-col lg:flex-row gap-6 items-stretch">
-            <HUD
-              candidate={selectedCandidate}
-              progress={progress}
-              isLoading={isLoading}
-            />
-
-            <ChatConsole
-              messages={messages}
-              onSendMessage={handleSendMessage}
-              isLoading={isLoading}
-              activeCandidate={selectedCandidate}
-              sessionId={sessionId}
-              error={error}
-              onRetry={handleRetry}
-              onDismissError={() => setError(null)}
-              progress={progress}
-            />
-          </div>
-        )}
-
-        {appState === 'REPORT' && selectedCandidate && feedback && (
-          <AssessmentReport
-            candidate={selectedCandidate}
-            feedback={feedback}
-            onRestart={handleStartInterview}
-            onSelectNewCandidate={handleReset}
-          />
-        )}
+      <main className="landing-hero-content">
+        <h1 ref={titleRef} className="landing-hero-title">
+          Apply Now to be part <br /> of the closed beta
+        </h1>
+        <a ref={btnRef} href="/interview" className="landing-hero-btn" style={{ textDecoration: 'none' }}>
+          <span className="btn-text">Start the Interview</span>
+          <span className="landing-blinking-dot"></span>
+        </a>
       </main>
+
+      <footer className="landing-footer-container">
+        <div className="landing-footer-top">
+          <h2 className="landing-footer-title">Stay in Touch</h2>
+          <h2 className="landing-footer-title">Think. Build. Repeat.</h2>
+        </div>
+
+        <hr className="landing-footer-divider" />
+
+        <div className="landing-footer-bottom">
+          <div className="landing-footer-socials"></div>
+
+          <nav className="landing-footer-links">
+            <a href="#about" className="landing-footer-link">About</a>
+            <a href="#features" className="landing-footer-link">Features</a>
+            <a href="#pricing" className="landing-footer-link">Pricing</a>
+            <a href="#contact" className="landing-footer-link">Contact</a>
+          </nav>
+
+          <div className="landing-footer-copyright">
+            © 2026 Sole Agent
+          </div>
+        </div>
+      </footer>
+
+      <div className="landing-footer-logo-wrap">
+        <h2 ref={logoRef} className="landing-footer-logo-text">Sole Agent</h2>
+      </div>
+
+      <div className="landing-video-container">
+        <video autoPlay muted playsInline loop id="landing-bg-video">
+          <source
+            src="https://api.getlayers.ai/storage/v1/object/public/public/assets/loopstack-f8c64439bf/flower.mp4"
+            type="video/mp4"
+          />
+          Ваш браузер не поддерживает видео.
+        </video>
+      </div>
+
+      <div ref={cursorRingRef} id="cursor-ring" className="landing-cursor-ring-outline"></div>
+
+      <div ref={glassCardRef} id="glass-card" className="landing-glass-cursor-card">
+        <span className="landing-cursor-card-text">
+          <span className="text-white">Say</span> Hello!
+        </span>
+      </div>
     </div>
   );
 }

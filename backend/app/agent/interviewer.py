@@ -8,8 +8,7 @@ import re
 import time
 from typing import Any
 
-from google import genai
-from google.genai import types
+# No google imports needed for DeepSeek
 
 from app.agent.errors import (
     LLMAuthError,
@@ -97,15 +96,13 @@ class InterviewAgent:
         return self._retriever
 
     @property
-    def client(self) -> genai.Client:
-        if self._client is None:
-            if not settings.gemini_api_key:
-                raise LLMNotConfiguredError(
-                    "No Gemini API key configured, so the interviewer cannot generate questions.",
-                    hint="Set GEMINI_API_KEY in .env (get one at https://aistudio.google.com/apikey), then restart the server.",
-                )
-            self._client = genai.Client(api_key=settings.gemini_api_key)
-        return self._client
+    def client(self) -> Any:
+        if not settings.deepseek_api_key:
+            raise LLMNotConfiguredError(
+                "No DeepSeek/OpenRouter API key configured, so the interviewer cannot generate questions.",
+                hint="Set DEEPSEEK_API_KEY in .env, then restart the server.",
+            )
+        return None
 
     def start(self, session_id: str, candidate: dict[str, Any]) -> dict[str, Any]:
         session = session_store.create(session_id, candidate)
@@ -184,68 +181,90 @@ class InterviewAgent:
             min_days=settings.min_curriculum_days,
             min_questions=settings.min_questions,
         )
-        contents: list[types.Content] = []
+        messages = [
+            {"role": "system", "content": system}
+        ]
         for msg in session.messages[-12:]:
-            role = "model" if msg["role"] == "assistant" else "user"
-            contents.append(
-                types.Content(
-                    role=role,
-                    parts=[types.Part.from_text(text=msg["content"])],
-                )
-            )
-        contents.append(
-            types.Content(
-                role="user",
-                parts=[types.Part.from_text(text=json.dumps(payload, ensure_ascii=False))],
-            )
-        )
+            role = "assistant" if msg["role"] == "assistant" else "user"
+            messages.append({"role": role, "content": msg["content"]})
+        
+        messages.append({"role": "user", "content": json.dumps(payload, ensure_ascii=False)})
 
-        config = types.GenerateContentConfig(
-            system_instruction=system,
-            temperature=0.4,
-            response_mime_type="application/json",
-        )
-
-        raw = self._generate_with_retries(contents, config)
+        raw = self._generate_with_retries(messages)
         result = self._parse_json(raw)
 
         if not str(result.get("reply") or "").strip():
             raise LLMResponseError(
                 "The model returned an empty interview reply.",
-                hint="Retry the turn; if it persists, try a different GEMINI_MODEL.",
+                hint="Retry the turn; if it persists, try a different DEEPSEEK_MODEL.",
             )
         return result
 
     def _generate_with_retries(
         self,
-        contents: list[types.Content],
-        config: types.GenerateContentConfig,
+        messages: list[dict[str, str]],
     ) -> str:
-        """Call Gemini, retrying only failures that are plausibly transient."""
+        """Call DeepSeek/OpenRouter, retrying only failures that are plausibly transient."""
+        import httpx
+        
+        if not settings.deepseek_api_key:
+            raise LLMNotConfiguredError(
+                "No DeepSeek/OpenRouter API key configured.",
+                hint="Set DEEPSEEK_API_KEY in .env, then restart the server.",
+            )
+            
+        headers = {
+            "Authorization": f"Bearer {settings.deepseek_api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/rudarsharma382-cell/sole_agent",
+            "X-Title": "SOLE_AGENT",
+        }
+        
+        data = {
+            "model": settings.deepseek_model,
+            "messages": messages,
+            "temperature": 0.4,
+            "response_format": {"type": "json_object"}
+        }
+
         last_error: Exception | None = None
 
         for attempt in range(1, MAX_LLM_ATTEMPTS + 1):
             try:
-                response = self.client.models.generate_content(
-                    model=settings.gemini_model,
-                    contents=contents,
-                    config=config,
+                response = httpx.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=headers,
+                    json=data,
+                    timeout=45.0,
                 )
-                text = (response.text or "").strip()
+                if response.status_code == 429:
+                    raise LLMRateLimitError("OpenRouter rate limit reached.")
+                if response.status_code in (401, 403):
+                    raise LLMAuthError("OpenRouter API key rejected or invalid.")
+                
+                response.raise_for_status()
+                
+                res_json = response.json()
+                choices = res_json.get("choices") or []
+                if not choices:
+                    last_error = LLMResponseError("Model returned no choices.")
+                    continue
+                    
+                text = (choices[0].get("message", {}).get("content") or "").strip()
                 if text:
                     return text
-                last_error = LLMResponseError("Model returned no content.")
+                    
+                last_error = LLMResponseError("Model returned empty content.")
             except Exception as exc:
+                if isinstance(exc, (LLMAuthError, LLMNotConfiguredError, LLMRateLimitError)):
+                    raise exc
                 mapped = self._classify_provider_error(exc)
-                # Auth and config problems will not fix themselves on retry.
-                if isinstance(mapped, (LLMAuthError, LLMNotConfiguredError)):
-                    raise mapped from exc
                 last_error = mapped
 
             if attempt < MAX_LLM_ATTEMPTS:
                 delay = RETRY_BACKOFF_SECONDS * attempt
                 logger.warning(
-                    "Gemini call failed (attempt %s/%s), retrying in %.1fs: %s",
+                    "DeepSeek/OpenRouter call failed (attempt %s/%s), retrying in %.1fs: %s",
                     attempt,
                     MAX_LLM_ATTEMPTS,
                     delay,
@@ -256,35 +275,30 @@ class InterviewAgent:
         if isinstance(last_error, (LLMRateLimitError, LLMResponseError)):
             raise last_error
         raise LLMUnavailableError(
-            f"Gemini did not respond successfully after {MAX_LLM_ATTEMPTS} attempts.",
-            hint="Check your network connection and the Gemini service status, then retry.",
+            f"DeepSeek/OpenRouter did not respond successfully after {MAX_LLM_ATTEMPTS} attempts.",
+            hint="Check your network connection and API key status, then retry.",
         )
 
     def _classify_provider_error(self, exc: Exception) -> Exception:
-        """Turn an opaque SDK exception into an actionable typed error."""
+        """Turn an opaque exception into an actionable typed error."""
         text = str(exc).lower()
 
-        if "api key not valid" in text or "api_key_invalid" in text:
+        if "api key not valid" in text or "api_key_invalid" in text or "unauthorized" in text or "401" in text:
             return LLMAuthError(
-                "Gemini rejected the configured API key.",
-                hint="GEMINI_API_KEY looks invalid. Generate a key at https://aistudio.google.com/apikey (it starts with 'AIza') and restart the server.",
+                "OpenRouter rejected the configured API key.",
+                hint="DEEPSEEK_API_KEY looks invalid. Double check the sk-or-v1 key in backend/.env.",
             )
         if "permission" in text or "403" in text:
             return LLMAuthError(
-                "Gemini denied access for this API key.",
-                hint="Confirm the Generative Language API is enabled for your key.",
+                "OpenRouter denied access for this API key.",
+                hint="Check if your OpenRouter account is active or has sufficient credits.",
             )
-        if "quota" in text or "rate limit" in text or "429" in text or "resource_exhausted" in text:
+        if "quota" in text or "rate limit" in text or "429" in text:
             return LLMRateLimitError(
-                "Gemini rate limit reached.",
-                hint="Wait a few seconds before sending the next answer, or use a model with a higher quota.",
+                "OpenRouter/DeepSeek rate limit reached.",
+                hint="Wait a few seconds before sending the next answer, or verify account balance.",
             )
-        if "not found" in text and "model" in text:
-            return LLMResponseError(
-                f"Model '{settings.gemini_model}' is not available for this key.",
-                hint="Set GEMINI_MODEL to a model you have access to, such as gemini-2.0-flash.",
-            )
-        return LLMUnavailableError(f"Gemini request failed: {exc}")
+        return LLMUnavailableError(f"DeepSeek/OpenRouter request failed: {exc}")
 
     def _parse_json(self, raw: str) -> dict[str, Any]:
         try:

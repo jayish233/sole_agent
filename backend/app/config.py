@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.0-flash"
 
+    deepseek_api_key: str = ""
+    deepseek_model: str = "deepseek/deepseek-chat"
+
     curriculum_path: Path = REPO_ROOT / "curriculum.json"
     candidates_path: Path = REPO_ROOT / "candidates.json"
     chroma_dir: Path = BACKEND_ROOT / ".chroma"
