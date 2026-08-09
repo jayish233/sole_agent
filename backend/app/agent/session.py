@@ -19,6 +19,9 @@ class InterviewSession:
     covered_days: list[int] = field(default_factory=list)
     done: bool = False
     feedback: dict[str, Any] | None = None
+    candidate_corrections: list[dict[str, Any]] = field(default_factory=list)
+    ai_self_corrections: list[dict[str, Any]] = field(default_factory=list)
+    hints_given: int = 0
 
     def progress(self) -> dict[str, Any]:
         """Live coverage stats the UI renders instead of guessing."""

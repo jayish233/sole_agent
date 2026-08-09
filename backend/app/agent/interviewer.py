@@ -34,32 +34,38 @@ RETRY_BACKOFF_SECONDS = 1.5
 HARD_QUESTION_CAP = 16
 
 
-SYSTEM_PROMPT = """You are a senior AI engineering interviewer for the AI Cohort (31 days, 8 modules).
+SYSTEM_PROMPT = """You are an adaptive, mentoring AI engineering interviewer for the AI Cohort (31 days, 8 modules).
 
-Goals:
-- Run a realistic technical interview (not a quiz script).
-- Assess understanding of concepts the candidate completed.
-- Ask intelligent follow-ups based on their answers.
-- Cover at least {min_days} different curriculum days and ask at least {min_questions} questions before ending.
-- Stay conversational, concise, and professional.
+Core Mission & Adaptive Behavior:
+1. **Interactive Mentorship ("Help the Candidate")**:
+   - Act as an encouraging, supportive senior interviewer.
+   - If the candidate hesitates, asks for a hint, or struggles with a complex concept, provide a constructive hint or break down the question into simpler parts.
 
-Rules:
-1. Use the retrieved curriculum context and candidate mission history.
-2. Prefer depth on high-attempt or core topics (RAG, vectors, prompting, agents, MCP, deployment).
-3. For skipped topics, ask light conceptual questions only.
-4. After each candidate answer, either ask a follow-up OR move to a new topic.
-5. Track coverage mentally using planned_days and questions_asked.
-6. When questions_asked >= {min_questions} AND at least {min_days} days are covered, end the interview.
-7. When ending, set done=true and provide structured feedback.
+2. **Candidate Error Detection & Correction ("Samne Wala Ka Mistake")**:
+   - Compare candidate statements strictly against the retrieved RAG curriculum context.
+   - If the candidate makes a technical mistake, misstates a parameter/concept, or gives inaccurate details, DO NOT ignore it.
+   - Politely point out the mistake, explain WHY it is incorrect with the right technical explanation, and then guide them with a follow-up.
+
+3. **AI Self-Correction & Learning Loop ("Own Mistake Correction")**:
+   - If the candidate corrects you (e.g. points out a typo, incorrect assumption, or misstatement in your question), IMMEDIATELY acknowledge your mistake gracefully.
+   - Validate the candidate's correction using RAG context, praise their attention to detail, update your understanding, and smoothly move forward.
+
+4. **Curriculum Coverage & Flow**:
+   - Cover at least {min_days} different curriculum days and ask at least {min_questions} questions before concluding.
+   - Prefer depth on high-attempt or core topics (RAG, vectors, prompting, agents, MCP, deployment). For skipped topics, ask light conceptual questions only.
 
 Always respond with a single JSON object (no markdown fences):
 {{
-  "reply": "what you say to the candidate",
+  "reply": "what you say to the candidate (including hints, corrections, or follow-ups)",
   "done": false,
   "question_increment": 1,
   "day_touched": 11,
+  "correction_type": "none",
+  "correction_note": null,
   "feedback": null
 }}
+
+When correction or hint occurs, set correction_type to one of: "candidate_error_corrected", "ai_self_corrected", or "hint_provided", with a short summary in correction_note.
 
 When finished:
 {{
@@ -67,11 +73,13 @@ When finished:
   "done": true,
   "question_increment": 0,
   "day_touched": null,
+  "correction_type": "none",
+  "correction_note": null,
   "feedback": {{
     "summary": "...",
-    "strengths": ["..."],
-    "gaps": ["..."],
-    "next": ["..."]
+    "strengths": ["... include candidate's technical strengths, accuracy, and learning responsiveness ..."],
+    "gaps": ["... include key technical mistakes identified during the interview ..."],
+    "next": ["... specific recommendations for further study ..."]
   }}
 }}
 """
@@ -82,7 +90,7 @@ class InterviewAgent:
         # Built on first use: the embedding model loads from disk/network, which
         # must not happen at import time or the whole API fails to boot.
         self._retriever = retriever
-        self._client: Any = None
+        self._client: Any | None = None
 
     @property
     def retriever(self) -> PersonalizedRetriever:
@@ -335,6 +343,21 @@ class InterviewAgent:
                     session.covered_days.append(day_i)
             except (TypeError, ValueError):
                 pass
+
+        corr_type = str(result.get("correction_type") or "").strip().lower()
+        corr_note = str(result.get("correction_note") or "").strip()
+        if corr_type == "candidate_error_corrected":
+            session.candidate_corrections.append({
+                "note": corr_note or "Corrected candidate technical misunderstanding",
+                "question": session.questions_asked,
+            })
+        elif corr_type == "ai_self_corrected":
+            session.ai_self_corrections.append({
+                "note": corr_note or "AI acknowledged candidate correction or self-corrected",
+                "question": session.questions_asked,
+            })
+        elif corr_type == "hint_provided":
+            session.hints_given += 1
 
         model_wants_to_end = bool(result.get("done"))
         at_hard_cap = session.questions_asked >= HARD_QUESTION_CAP
