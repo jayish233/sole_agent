@@ -83,7 +83,7 @@ def health() -> dict[str, Any]:
         rag_error = str(exc)
 
     rag_ready = rag_chunks > 0
-    llm_ready = bool(settings.deepseek_api_key)
+    llm_ready = bool(settings.openrouter_api_key)
 
     return {
         "status": "ok" if (rag_ready and llm_ready) else "degraded",
@@ -91,7 +91,7 @@ def health() -> dict[str, Any]:
         "rag_ready": rag_ready,
         "rag_error": rag_error,
         "llm_ready": llm_ready,
-        "model": settings.deepseek_model,
+        "model": settings.model_name,
         "active_sessions": session_store.count(),
         "min_questions": settings.min_questions,
         "min_days": settings.min_curriculum_days,

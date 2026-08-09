@@ -15,7 +15,10 @@ export default function HomeLandingPage() {
     // 1. Logo Letter Splitting
     const logoText = logoRef.current;
     if (logoText) {
-      const text = logoText.textContent?.trim() || '';
+      const text = logoText.getAttribute('data-original-text') || logoText.textContent?.trim() || '';
+      if (!logoText.hasAttribute('data-original-text')) {
+        logoText.setAttribute('data-original-text', text);
+      }
       logoText.innerHTML = '';
       [...text].forEach((char, index) => {
         const wrapper = document.createElement('span');
@@ -32,11 +35,14 @@ export default function HomeLandingPage() {
     // 2. Title Word Splitting
     const heroTitle = titleRef.current;
     if (heroTitle) {
-      const text = heroTitle.innerHTML;
-      const parts = text.split(/(\s+|<br\s*\/?>)/i);
+      const text = heroTitle.getAttribute('data-original-html') || heroTitle.innerHTML;
+      if (!heroTitle.hasAttribute('data-original-html')) {
+        heroTitle.setAttribute('data-original-html', text);
+      }
       heroTitle.innerHTML = '';
 
       let wordIndex = 0;
+      const parts = text.split(/(\s+|<br\s*\/?>)/i);
       parts.forEach((part) => {
         if (part.trim() === '') {
           heroTitle.appendChild(document.createTextNode(' '));
@@ -352,7 +358,7 @@ export default function HomeLandingPage() {
 
         .landing-footer-logo-wrap {
           position: fixed;
-          bottom: 20px;
+          bottom: 50px;
           left: 0;
           right: 0;
           width: 100%;
@@ -482,6 +488,8 @@ export default function HomeLandingPage() {
           overflow: hidden;
           vertical-align: bottom;
           line-height: 0.8;
+          padding-bottom: 0.25em;
+          margin-bottom: -0.25em;
         }
         .landing-footer-logo-text .letter-inner {
           display: inline-block;
@@ -519,17 +527,8 @@ export default function HomeLandingPage() {
           <h2 className="landing-footer-title">Think. Build. Repeat.</h2>
         </div>
 
-        <hr className="landing-footer-divider" />
-
         <div className="landing-footer-bottom">
           <div className="landing-footer-socials"></div>
-
-          <nav className="landing-footer-links">
-            <a href="#about" className="landing-footer-link">About</a>
-            <a href="#features" className="landing-footer-link">Features</a>
-            <a href="#pricing" className="landing-footer-link">Pricing</a>
-            <a href="#contact" className="landing-footer-link">Contact</a>
-          </nav>
 
           <div className="landing-footer-copyright">
             © 2026 Sole Agent

@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     deepseek_model: str = "deepseek/deepseek-chat"
 
+    openrouter_api_key: str = ""
+    model_name: str = "nvidia/nemotron-3-ultra:free"
+    fallback_model_name: str = "deepseek/deepseek-r1:free"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+
+
     curriculum_path: Path = REPO_ROOT / "curriculum.json"
     candidates_path: Path = REPO_ROOT / "candidates.json"
     chroma_dir: Path = BACKEND_ROOT / ".chroma"

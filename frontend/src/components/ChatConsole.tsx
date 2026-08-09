@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ApiErrorShape, InterviewProgress, MessageItem, Candidate } from '@/lib/types';
 import { Terminal, Send, Cpu, Clock, CheckCircle2 } from 'lucide-react';
 import { ErrorBanner } from './ErrorBanner';
+import { MessageLoading } from './ui/message-loading';
 
 interface TypewriterContainerProps {
   text: string;
@@ -288,13 +289,10 @@ export const ChatConsole: React.FC<ChatConsoleProps> = ({
             className="flex items-start space-x-3"
           >
             <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-indigo-950 border border-blue-200 dark:border-indigo-500/40 text-blue-600 dark:text-cyan-400 flex items-center justify-center shrink-0">
-              <Cpu className="w-4 h-4 animate-spin" />
+              <Cpu className="w-4 h-4" />
             </div>
             <div className="bg-white/85 dark:bg-slate-900/85 border border-slate-200 dark:border-slate-800 px-4 py-3 rounded-2xl flex items-center space-x-3 text-xs font-mono text-blue-600 dark:text-cyan-400 shadow-sm backdrop-blur-sm">
-              <span className="flex h-2 w-2 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 dark:bg-cyan-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-555 dark:bg-cyan-500" />
-              </span>
+              <MessageLoading />
               <span>SOLE_AGENT is analyzing your response…</span>
             </div>
           </motion.div>

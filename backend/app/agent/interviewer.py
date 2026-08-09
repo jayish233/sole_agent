@@ -22,6 +22,7 @@ from app.agent.errors import (
 from app.agent.planner import plan_interview_days
 from app.agent.session import InterviewSession, session_store
 from app.config import settings
+from app.engine import client as openai_client, get_model_name
 from app.rag.retriever import PersonalizedRetriever
 
 logger = logging.getLogger(__name__)
@@ -81,7 +82,7 @@ class InterviewAgent:
         # Built on first use: the embedding model loads from disk/network, which
         # must not happen at import time or the whole API fails to boot.
         self._retriever = retriever
-        self._client: genai.Client | None = None
+        self._client: Any = None
 
     @property
     def retriever(self) -> PersonalizedRetriever:
@@ -97,12 +98,12 @@ class InterviewAgent:
 
     @property
     def client(self) -> Any:
-        if not settings.deepseek_api_key:
+        if not settings.openrouter_api_key:
             raise LLMNotConfiguredError(
-                "No DeepSeek/OpenRouter API key configured, so the interviewer cannot generate questions.",
-                hint="Set DEEPSEEK_API_KEY in .env, then restart the server.",
+                "No OpenRouter API key configured, so the interviewer cannot generate questions.",
+                hint="Set OPENROUTER_API_KEY in .env, then restart the server.",
             )
-        return None
+        return openai_client
 
     def start(self, session_id: str, candidate: dict[str, Any]) -> dict[str, Any]:
         session = session_store.create(session_id, candidate)
@@ -204,56 +205,39 @@ class InterviewAgent:
         self,
         messages: list[dict[str, str]],
     ) -> str:
-        """Call DeepSeek/OpenRouter, retrying only failures that are plausibly transient."""
-        import httpx
-        
-        if not settings.deepseek_api_key:
+        """Call OpenRouter, retrying only failures that are plausibly transient."""
+        if not settings.openrouter_api_key:
             raise LLMNotConfiguredError(
-                "No DeepSeek/OpenRouter API key configured.",
-                hint="Set DEEPSEEK_API_KEY in .env, then restart the server.",
+                "No OpenRouter API key configured.",
+                hint="Set OPENROUTER_API_KEY in .env, then restart the server.",
             )
-            
-        headers = {
-            "Authorization": f"Bearer {settings.deepseek_api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/rudarsharma382-cell/sole_agent",
-            "X-Title": "SOLE_AGENT",
-        }
-        
-        data = {
-            "model": settings.deepseek_model,
-            "messages": messages,
-            "temperature": 0.4,
-            "response_format": {"type": "json_object"}
-        }
 
         last_error: Exception | None = None
 
         for attempt in range(1, MAX_LLM_ATTEMPTS + 1):
             try:
-                response = httpx.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers=headers,
-                    json=data,
-                    timeout=45.0,
-                )
-                if response.status_code == 429:
-                    raise LLMRateLimitError("OpenRouter rate limit reached.")
-                if response.status_code in (401, 403):
-                    raise LLMAuthError("OpenRouter API key rejected or invalid.")
-                
-                response.raise_for_status()
-                
-                res_json = response.json()
-                choices = res_json.get("choices") or []
-                if not choices:
-                    last_error = LLMResponseError("Model returned no choices.")
-                    continue
-                    
-                text = (choices[0].get("message", {}).get("content") or "").strip()
+                try:
+                    response = openai_client.chat.completions.create(
+                        model=get_model_name(),
+                        messages=messages,
+                        temperature=0.4,
+                        response_format={"type": "json_object"}
+                    )
+                except Exception as json_mode_exc:
+                    # If JSON mode is not supported by the model, OpenRouter might return a 400.
+                    # Retry without JSON mode.
+                    if "format" in str(json_mode_exc).lower() or "400" in str(json_mode_exc):
+                        response = openai_client.chat.completions.create(
+                            model=get_model_name(),
+                            messages=messages,
+                            temperature=0.4
+                        )
+                    else:
+                        raise json_mode_exc
+
+                text = (response.choices[0].message.content or "").strip()
                 if text:
                     return text
-                    
                 last_error = LLMResponseError("Model returned empty content.")
             except Exception as exc:
                 if isinstance(exc, (LLMAuthError, LLMNotConfiguredError, LLMRateLimitError)):
@@ -264,7 +248,7 @@ class InterviewAgent:
             if attempt < MAX_LLM_ATTEMPTS:
                 delay = RETRY_BACKOFF_SECONDS * attempt
                 logger.warning(
-                    "DeepSeek/OpenRouter call failed (attempt %s/%s), retrying in %.1fs: %s",
+                    "OpenRouter call failed (attempt %s/%s), retrying in %.1fs: %s",
                     attempt,
                     MAX_LLM_ATTEMPTS,
                     delay,
@@ -275,7 +259,7 @@ class InterviewAgent:
         if isinstance(last_error, (LLMRateLimitError, LLMResponseError)):
             raise last_error
         raise LLMUnavailableError(
-            f"DeepSeek/OpenRouter did not respond successfully after {MAX_LLM_ATTEMPTS} attempts.",
+            f"OpenRouter did not respond successfully after {MAX_LLM_ATTEMPTS} attempts.",
             hint="Check your network connection and API key status, then retry.",
         )
 
@@ -286,7 +270,7 @@ class InterviewAgent:
         if "api key not valid" in text or "api_key_invalid" in text or "unauthorized" in text or "401" in text:
             return LLMAuthError(
                 "OpenRouter rejected the configured API key.",
-                hint="DEEPSEEK_API_KEY looks invalid. Double check the sk-or-v1 key in backend/.env.",
+                hint="OPENROUTER_API_KEY looks invalid. Double check the sk-or-v1 key in backend/.env.",
             )
         if "permission" in text or "403" in text:
             return LLMAuthError(
@@ -295,10 +279,10 @@ class InterviewAgent:
             )
         if "quota" in text or "rate limit" in text or "429" in text:
             return LLMRateLimitError(
-                "OpenRouter/DeepSeek rate limit reached.",
+                "OpenRouter rate limit reached.",
                 hint="Wait a few seconds before sending the next answer, or verify account balance.",
             )
-        return LLMUnavailableError(f"DeepSeek/OpenRouter request failed: {exc}")
+        return LLMUnavailableError(f"OpenRouter request failed: {exc}")
 
     def _parse_json(self, raw: str) -> dict[str, Any]:
         try:
