@@ -15,10 +15,10 @@ export default function HomeLandingPage() {
     // 1. Logo Letter Splitting
     const logoText = logoRef.current;
     if (logoText) {
-      const text = logoText.getAttribute('data-original-text') || logoText.textContent?.trim() || '';
-      if (!logoText.hasAttribute('data-original-text')) {
-        logoText.setAttribute('data-original-text', text);
+      if (!logoText.dataset.rawText) {
+        logoText.dataset.rawText = logoText.textContent?.trim() || '';
       }
+      const text = logoText.dataset.rawText;
       logoText.innerHTML = '';
       [...text].forEach((char, index) => {
         const wrapper = document.createElement('span');
@@ -35,10 +35,10 @@ export default function HomeLandingPage() {
     // 2. Title Word Splitting
     const heroTitle = titleRef.current;
     if (heroTitle) {
-      const text = heroTitle.getAttribute('data-original-html') || heroTitle.innerHTML;
-      if (!heroTitle.hasAttribute('data-original-html')) {
-        heroTitle.setAttribute('data-original-html', text);
+      if (!heroTitle.dataset.rawText) {
+        heroTitle.dataset.rawText = heroTitle.innerHTML;
       }
+      const text = heroTitle.dataset.rawText;
       heroTitle.innerHTML = '';
 
       let wordIndex = 0;
